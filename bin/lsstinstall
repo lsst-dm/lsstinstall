@@ -1,0 +1,394 @@
+#!/bin/bash
+# 
+#  Rubin Observatory Deployment of EUPS top level product
+#  
+#    given an eups tag and a eups product to deploy the script will:
+#    - check that LSST_HOME is set. This includes:
+#          - creating $HOME/lsst_wrk (or the folder defined in a preexising $LSST_HOME)
+#    - get the environment information required from the eups tags lists in:
+#          https://eups.lsst.codes/stack/src/tags/
+#    - check that the environment is available
+#      - if it is available:
+#        - activate the envionronment
+#      - if it is not available:
+#        - deploy the environment
+#        - create a specific loadLSST_ENV.bash to activate the environment for future new shell
+#    - activating the environment sourcing the corresponding load_LSST_ENV.bash
+#    - execute:
+#        eups distrib install -t <EUPS_TAG> <EUPS_PRODUCT>
+#
+#    To consider as prereq:
+#    - conda (anaconda or miniconda)
+#    - git
+#
+#    An additional script should be added in order to be able to switch between environments
+#    - this is similar (but not the same) as envconfig
+#
+#############################################################################################
+
+
+# defining the workspace, where lsstinstall will work
+LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
+LSST_PYTHON_VERSION=3
+EUPS_REPO_URL="${EUPS_REPO_URL:-https://eups.lsst.codes}"
+ENVS_FOLDER="${LSST_HOME}/envs"
+# following string is used to build the EUPS_PKGROOT where binaries are stored
+#    since the binaries should only depend on the conda environment,
+#    there should be no need to include this in the EUPS_PKGROOT
+MINICONDA_STR="miniconda${LSST_PYTHON_VERSION}-4.7.12"
+USE_ONLY_SRC=false
+CONDA_ENV_BASE_NAME=lsst-scipipe
+
+
+#
+# removing leading/trailing whitespace from a string
+#
+#http://stackoverflow.com/questions/369758/how-to-trim-whitespace-from-a-bash-variable#12973694
+#
+trimws() {
+        local var="$*"
+        # remove leading whitespace characters
+        var="${var#"${var%%[![:space:]]*}"}"
+        # remove trailing whitespace characters
+        var="${var%"${var##*[![:space:]]}"}"
+        echo -n "$var"
+}
+
+
+print_error() {
+  >&2 echo -e "$@"
+}
+
+
+fail() {
+  local code=${2:-1}
+  [[ -n $1 ]] && print_error "$1"
+  # shellcheck disable=SC2086
+  exit $code
+}
+
+
+usage() {
+  if [[ ! -z "$1" ]]; then
+    print_error "$0: $1"
+  fi
+
+  # note that heredocs are prefixed with tab chars
+  fail "$(cat <<-EOF
+		Usage: $0 [-h] [-s] -t eups_tag eups_product
+
+		Specific options:
+
+		-t          Install eups_tag of eups_product after ensuring that the proper conda environment is available. 
+		            In case it is not, it will be deployed and activate.
+
+		-s          Only use EUPS source "eupspkg" packages.
+
+		-h          Show this message
+	EOF
+
+  )"
+}
+
+
+check_conda() {
+  # activating conda
+  CONDA_PATH=`which conda`
+  CONDA_DIR=`dirname "${CONDA_PATH}"`
+  . "${CONDA_DIR}/../etc/profile.d/conda.sh"
+}
+
+
+config_curl() {
+  # Prefer system curl; user-installed ones sometimes behave oddly
+  if [[ -x /usr/bin/curl ]]; then
+    CURL=${CURL:-/usr/bin/curl}
+  else
+    CURL=${CURL:-curl}
+  fi
+
+  # disable curl progress meter unless running under a tty -- this is intended to
+  # reduce the amount of console output when running under CI
+  CURL_OPTS=('-#')
+  if [[ ! -t 1 ]]; then
+    CURL_OPTS=('-sS')
+  fi
+
+  # curl will exit 0 on 404 without the fail flag
+  CURL_OPTS+=('--fail')
+}
+
+
+parse_args() {
+  local OPTIND
+  local opt
+
+  while getopts "sth" opt; do
+    case "$opt" in
+    s)
+      USE_ONLY_SRC=true
+      ;;
+    t)
+      # if -s option is giving, an extra shift is required
+      if [ $# = 4 ]; then shift; fi
+      shift;
+      EUPS_TAG=$1
+      EUPS_PRODUCT=$2
+      ;;
+    h)
+      usage
+      ;;
+    *)
+      usage "Unknown option: ${opt}"
+      ;;
+    esac
+  done
+  shift $((OPTIND-1))
+
+}
+
+
+create_load_script() {
+  echo File to source: $config_file
+  cmd_setup_conda="$(cat <<-EOF
+	export LSST_CONDA_ENV_NAME=${LSST_CONDA_ENV_NAME}
+	# shellcheck disable=SC1091
+	source "${CONDA_DIR}/../etc/profile.d/conda.sh"
+	conda activate "\$LSST_CONDA_ENV_NAME"
+	EOF
+  )"
+
+  # shellcheck disable=SC2094
+  cat > "${config_file}" <<-EOF
+		# This script is intended to be used with bash to load the LSST environment for:
+		#     eups product: ${EUPS_PRODUCT}
+		#     eups tag:     ${EUPS_TAG}
+		#
+		# Usage: source $(basename $config_file)
+
+		${cmd_setup_conda}
+		LSST_HOME="${LSST_HOME}"
+		EUPS_BIN_PKGROOT="${EUPS_BIN_PKGROOT}"
+		EUPS_SRC_PKGROOT="${EUPS_SRC_PKGROOT}"
+
+		# Bootstrap EUPS
+		# EUPS_DIR is defined in the conda environment itself
+		source "\${EUPS_DIR}/bin/setups.sh"
+		export -f setup
+		export -f unsetup
+
+		if [ "\${1}" = "-s" ]; then
+		  export EUPS_PKGROOT=\${EUPS_PKGROOT:-\${EUPS_SRC_PKGROOT}}
+		else
+		  export EUPS_PKGROOT=\${EUPS_PKGROOT:-\${EUPS_BIN_PKGROOT}|\${EUPS_SRC_PKGROOT}}
+		fi
+		export EUPS_PATH=${EUPS_PATH}
+	EOF
+
+}
+
+
+define_platform() {
+
+  case $(uname -s) in
+    Linux*)
+      pkg_postfix='linux-64'
+      local release_file='/etc/redhat-release'
+      if [[ ! -e $release_file ]]; then
+         print_error "unknown osfamily"
+         #[[ $__debug == true ]] && print_error "unknown osfamily"
+      fi
+      osfamily="redhat"
+
+      # capture only major version number because "posix character classes"
+      if [[ ! $(<"$release_file") =~ release[[:space:]]*([[:digit:]]+) ]]; then
+         print_error "unable to find release string"
+         #[[ $__debug == true ]] && print_error "unable to find release string"
+      fi
+      osrelease="${BASH_REMATCH[1]}"
+      case $osrelease in
+        6)
+          osplatform=el6
+          target_cc=devtoolset-8
+          ;;
+        7)
+          osplatform=el7
+          target_cc=devtoolset-8
+          ;;
+        *)
+          print_error "unsupported release: $osrelease"
+          #[[ $__debug == true ]] && print_error "unsupported release: $__release"
+          ;;
+        esac
+      ;;
+    Darwin*)
+      osfamily="osx"
+      pkg_postfix='osx-64'
+      target_cc=clang-1000.10.44.4
+
+      if ! release=$(sw_vers -productVersion); then
+         print_error "unable to find release string"
+         #[[ $__debug == true ]] && print_error "unable to find release string"
+      fi
+      osrelease=$(trimws "$release")
+      case $osrelease in
+        # XXX bash 3.2 on osx does not support case fall-through
+        10.9.* | 10.1?.* | 10.1?)
+          osplatform=10.9
+          target_cc=clang-1000.10.44.4
+          ;;
+        *)
+          print_error "unsupported release: $osrelease"
+          #[[ $__debug == true ]] && print_error "unsupported release: $osrelease"
+          ;;
+        esac
+      ;;
+    *)
+      print_error "unknown osfamily"
+      #[[ $__debug == true ]] && print_error "unknown osfamily"
+      ;;
+  esac
+  echo "  ... configuring enfironment for:"
+  echo "      os-family: ${osfamily}"
+  echo "      os-release: ${osrelease}"
+  echo "      os-platform: ${osplatform}"
+  echo "      pkg_postfix: ${pkg_postfix}"
+  echo "      compiler: ${target_cc}"
+
+}
+
+
+create_environment() {
+  # definiting the platform
+  # define_platform
+  #case $(uname -s) in
+  #  Linux*)
+  #    local ana_platform='Linux-x86_64'
+  #    local pkg_postfix='linux-64'
+  #    ;;
+  #  Darwin*)
+  #    local ana_platform='MacOSX-x86_64'
+  #    local pkg_postfix='osx-64'
+  #    ;;
+  #  *)
+  #    fail "Unsupported platform $(uname -s)"
+  #    ;;
+  #esac
+  #platform=`echo "${pkg_postfix}" | awk -F '-' '{ print $1 }'`
+
+  local pyver_prefix=$LSST_PYTHON_VERSION
+  local env_def_file="conda${pyver_prefix}_packages-${pkg_postfix}.yml"
+  local env_url="https://raw.githubusercontent.com/${ENV_REPO_ORG}/${ENV_REPO_NAME}/${ENV_REF}/etc/"
+  local env_file="${ENVS_FOLDER}/${ENV_REF}/${env_def_file}"
+  echo " ... looking for ${env_def_file} in ${env_url}"
+  mkdir -p "${env_file%/*}"
+  # downloading environment definitino file
+  $CURL "${CURL_OPTS[@]}" -# -L "${env_url}/${env_def_file}" --output "${env_file}"  
+  # creating environment
+  conda env update --name "${LSST_CONDA_ENV_NAME}" --file "${env_file}"
+
+  # setting up eups
+  conda activate "${LSST_CONDA_ENV_NAME}"  
+  conda info | grep "active environment"
+  # checking if eups is included in the environment
+  EUPS_CHECK=`which eups`
+  if [ -z "${EUPS_CHECK}" ]; then
+    conda install -y eups -c gcomoretto
+  fi
+
+  conda deactivate
+
+  # creating new EUPS_PATH
+  EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
+  mkdir -p "${EUPS_PATH}"/{site,ups_db}
+
+  # set EUPS_PKG_ROOT
+  EUPS_BIN_PKGROOT="${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}"
+  echo $EUPS_BIN_PKGROOT
+  EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
+  echo $EUPS_SRC_PKGROOT
+  EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  echo $EUPS_PKGROOT
+
+  create_load_script
+
+}
+
+
+set_environment() {
+  LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
+  LIST_URL="${LIST_BASE_URL}"/"${EUPS_TAG}".list
+  RAW_ENV_INFO=`"${CURL}" -s "${LIST_URL}" | grep CONDA_ENV`
+
+  if [ -z "${RAW_ENV_INFO}" ]; then
+    fail "Eups tag ${EUPS_TAG} for product ${EUPS_PRODUCT} not related to any environment."
+  fi
+
+  RAW_ENV_REPO=`echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }'`
+  ENV_REPO_URL=`echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $1 }'`
+  ENV_REF=`echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $2 }'`
+  ENV_REPO_NAME=`echo ${ENV_REPO_URL} | awk -F '/' '{ print $5 }' | awk -F '.' '{ print $1 }'`
+  ENV_REPO_ORG=`echo ${ENV_REPO_URL} | awk -F '/' '{ print $4 }'`
+  # echo "Retriving conda environment information forom respository ${ENV_REPO_URL}, SHA-1 ${ENV_REF}."
+
+  export LSST_CONDA_ENV_NAME="${CONDA_ENV_BASE_NAME}-${ENV_REF}"
+
+  # defining the filename to source for environment configuration
+  config_file_name="lsst_${ENV_REF}_env.sh"
+  config_file="${ENVS_FOLDER}/${ENV_REF}/loadLSST_${ENV_REF}_env.sh"
+
+  # check if the environment exist
+  ENV_CHECK=`conda env list | grep ^${LSST_CONDA_ENV_NAME}`
+  if [ -z "${ENV_CHECK}" ]; then
+    echo " ... creating new environemnt ${LSST_CONDA_ENV_NAME} ..."
+    create_environment "${LSST_CONDA_ENV_NAME}"
+  fi
+  #conda activate "${LSST_CONDA_ENV_NAME}"
+  if [ "${USE_ONLY_SRC}" == "false" ]; then
+    echo "  ... configuring eups to install binary packages if available."
+    source "${config_file}"
+  else
+    echo "  ... configuring eups to only build from source packages."
+    source "${config_file}" -s
+  fi
+
+  echo "Environment ${LSST_CONDA_ENV_NAME} activated."
+
+}
+
+
+main() {
+  config_curl
+
+  parse_args "$@"
+
+  # create the workspace folder if it doesn't exists
+  mkdir -p "${LSST_HOME}"
+
+  # I assume a valid conda is already installed
+  # we can add a check and if not present install a miniconda
+  # howeverm if this tool is distributed as conda package this is not needed
+  check_conda
+
+  echo "Preparing ..."
+  define_platform
+  #EUPS_BIN_PKGROOT=${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}
+  #echo $EUPS_BIN_PKGROOT
+
+  echo "Setting environment ..."
+  set_environment
+  echo
+  echo "Installing distribution:"
+  echo "  EUPS Product: ${EUPS_PRODUCT}"
+  echo "  EUPS Tag:     ${EUPS_TAG}"
+  echo "  eups distrib install -t ${EUPS_TAG} ${EUPS_PRODUCT}"
+  eups distrib install -t "${EUPS_TAG}" "${EUPS_PRODUCT}" 
+  echo "DONE."
+  echo
+  echo "Before using the installed distribution, activate the conda enviroment as follows:"
+  echo "  source ${config_file}"
+  echo
+
+}
+
+main "$@"
