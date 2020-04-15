@@ -1,0 +1,47 @@
+---
+sudo: false
+language: c
+matrix:
+  include:
+    - &accept
+      os: linux
+      env: MODE=prepare-only
+      services:
+        - docker
+      script: ./tests/docker-acceptance.sh
+
+    - <<: *accept
+      env: MODE=help
+
+    - &plumb
+      env: TEST=markdownlint
+      language: c
+      services:
+        - docker
+      script: ./tests/mdl.sh
+
+    - <<: *plumb
+      env: TEST=yamllint
+      script: ./tests/yamllint.sh
+
+    - <<: *plumb
+      env: TEST=shellcheck
+      script: ./tests/shellcheck.sh
+
+    - <<: *plumb
+      env: TEST=hadolint
+      script: ./tests/hadolint.sh
+
+    - env: TEST=make
+      script: ./tests/make.sh
+  # osx builds are often very slow to start due to high demand
+  fast_finish: true
+  # allow_failures:
+  #   - os: osx
+branches:
+  only:
+    - master
+    # also matched against tag pushes
+    - /^\d+\.\d+\.\d+$/
+notifications:
+  email: false
