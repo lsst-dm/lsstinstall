@@ -38,6 +38,7 @@ ENVS_FOLDER="${LSST_HOME}/envs"
 MINICONDA_STR="miniconda${LSST_PYTHON_VERSION}-4.7.12"
 USE_ONLY_SRC=false
 CONDA_ENV_BASE_NAME=lsst-scipipe
+SETUP_ONLY=false
 
 
 #
@@ -80,9 +81,15 @@ usage() {
 		Specific options:
 
 		-t          Install eups_tag of eups_product after ensuring that the proper conda environment is available. 
-		            In case it is not, it will be deployed and activate.
+		            In case it is not, it will be deployed and activated before execute the eups distrib install..
 
 		-s          Only use EUPS source "eupspkg" packages.
+		            Do not use together with -p option.
+
+		-p          Prepare Only. Check if the environment for a specific build is available.
+		            In case it is not, it will be deployed and the activation script generate.
+		            No eups distrib install will be executed.
+		            Do not use together with -s option
 
 		-h          Show this message
 	EOF
@@ -123,10 +130,13 @@ parse_args() {
   local OPTIND
   local opt
 
-  while getopts "sth" opt; do
+  while getopts "stph" opt; do
     case "$opt" in
     s)
       USE_ONLY_SRC=true
+      ;;
+    p)
+      SETUP_ONLY=true
       ;;
     t)
       # if -s option is giving, an extra shift is required
@@ -145,6 +155,8 @@ parse_args() {
   done
   shift $((OPTIND-1))
 
+  echo "use only sources: $USE_ONLY_SRC"
+  echo "setup-only:       $SETUP_ONLY"
 }
 
 
@@ -378,15 +390,24 @@ main() {
   echo "Setting environment ..."
   set_environment
   echo
-  echo "Installing distribution:"
-  echo "  EUPS Product: ${EUPS_PRODUCT}"
-  echo "  EUPS Tag:     ${EUPS_TAG}"
-  echo "  eups distrib install -t ${EUPS_TAG} ${EUPS_PRODUCT}"
-  eups distrib install -t "${EUPS_TAG}" "${EUPS_PRODUCT}" 
-  echo "DONE."
-  echo
-  echo "Before using the installed distribution, activate the conda enviroment as follows:"
-  echo "  source ${config_file}"
+  #echo "  EUPS Product: ${EUPS_PRODUCT}"
+  #echo "  EUPS Tag:     ${EUPS_TAG}"
+  if [ "$SETUP_ONLY" == "false" ]; then
+    echo "Installing distribution:"
+    echo "  eups distrib install -t ${EUPS_TAG} ${EUPS_PRODUCT}"
+    #eups distrib install -t "${EUPS_TAG}" "${EUPS_PRODUCT}" 
+    echo "DONE."
+    echo
+    echo "Before using the installed distribution, activate the conda enviroment as follows:"
+    echo "    source ${config_file} [-s to use only source packages]"
+  else
+    echo "Setup Only."
+    echo "Activate the environment as follows:"
+    echo "    source ${config_file} [-s to use only source packages]"
+    echo
+    echo "and then install the distribution:"
+    echo "    eups distrib install -t ${EUPS_TAG} ${EUPS_PRODUCT}"
+  fi
   echo
 
 }
