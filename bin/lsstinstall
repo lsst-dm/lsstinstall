@@ -78,8 +78,6 @@ usage() {
   fail "$(cat <<-EOF
 		Usage: $0 [-h] [-s] -t eups_tag eups_product
 
-		Specific options:
-
 		-t          Install eups_tag of eups_product after ensuring that the proper conda environment is available. 
 		            In case it is not, it will be deployed and activated before execute the eups distrib install..
 
@@ -92,6 +90,7 @@ usage() {
 		            Do not use together with -s option
 
 		-h          Show this message
+		
 	EOF
 
   )"
@@ -305,7 +304,7 @@ create_environment() {
   # checking if eups is included in the environment
   EUPS_CHECK=`which eups`
   if [ -z "${EUPS_CHECK}" ]; then
-    conda install -y eups -c gcomoretto
+    conda install -y eups -c conda-forge
   fi
 
   conda deactivate
@@ -375,6 +374,7 @@ main() {
   parse_args "$@"
 
   # create the workspace folder if it doesn't exists
+  echo "LSST_HOME set to ${LSST_HOME}"
   mkdir -p "${LSST_HOME}"
 
   # I assume a valid conda is already installed
@@ -382,7 +382,7 @@ main() {
   # howeverm if this tool is distributed as conda package this is not needed
   check_conda
 
-  echo "Preparing ..."
+  #echo "Preparing ..."
   define_platform
   #EUPS_BIN_PKGROOT=${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}
   #echo $EUPS_BIN_PKGROOT
