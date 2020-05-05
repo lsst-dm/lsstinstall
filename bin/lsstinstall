@@ -85,7 +85,7 @@ usage() {
 		            Do not use together with -p option.
 
 		-p          Prepare Only. Check if the environment for a specific build is available.
-		            In case it is not, it will be deployed and the activation script generate.
+		            In case it is not, it will be deployed and the activation script generated.
 		            No eups distrib install will be executed.
 		            Do not use together with -s option
 
@@ -395,7 +395,7 @@ main() {
   if [ "$SETUP_ONLY" == "false" ]; then
     echo "Installing distribution:"
     echo "  eups distrib install -t ${EUPS_TAG} ${EUPS_PRODUCT}"
-    #eups distrib install -t "${EUPS_TAG}" "${EUPS_PRODUCT}" 
+    eups distrib install -t "${EUPS_TAG}" "${EUPS_PRODUCT}" 
     echo "DONE."
     echo
     echo "Before using the installed distribution, activate the conda enviroment as follows:"
