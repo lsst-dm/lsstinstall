@@ -409,6 +409,9 @@ main() {
     echo "    eups distrib install -t ${EUPS_TAG} ${EUPS_PRODUCT}"
   fi
   echo
+  echo "or see how to activate the environment using envconfig:"
+  echo "    envconfig -h"
+  echo
 
 }
 
