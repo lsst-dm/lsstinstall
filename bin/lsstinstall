@@ -269,23 +269,32 @@ define_platform() {
 }
 
 
+discover_url(){
+  # search $2 in the second level deep of $1
+  # It would be preferable to have this information stored in eups.lsst.codes for each build
+  #  - compiler
+  #  - miniconda version
+  first_level=`curl -s ${1} | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }'`
+  local BIN_PATH=''
+  for line in ${first_level}
+  do
+    url="${1}/${line}"
+    #(curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent)
+    second_level=`curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }' | grep $2`
+    for path in ${second_level}
+    do
+      if [[ ${BIN_PATH} == '' ]]; then
+        BIN_PATH="${url}/${path}" 
+      else
+        BIN_PATH="${BIN_PATH}|${url}/${path}"
+      fi
+    done
+  done
+  echo "${BIN_PATH}"
+}
+
+
 create_environment() {
-  # definiting the platform
-  # define_platform
-  #case $(uname -s) in
-  #  Linux*)
-  #    local ana_platform='Linux-x86_64'
-  #    local pkg_postfix='linux-64'
-  #    ;;
-  #  Darwin*)
-  #    local ana_platform='MacOSX-x86_64'
-  #    local pkg_postfix='osx-64'
-  #    ;;
-  #  *)
-  #    fail "Unsupported platform $(uname -s)"
-  #    ;;
-  #esac
-  #platform=`echo "${pkg_postfix}" | awk -F '-' '{ print $1 }'`
 
   local pyver_prefix=$LSST_PYTHON_VERSION
   local env_def_file="conda${pyver_prefix}_packages-${pkg_postfix}.yml"
@@ -313,9 +322,11 @@ create_environment() {
   EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
   mkdir -p "${EUPS_PATH}"/{site,ups_db}
 
+
   # set EUPS_PKG_ROOT
-  EUPS_BIN_PKGROOT="${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}"
-  echo $EUPS_BIN_PKGROOT
+  EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
+  #EUPS_BIN_PKGROOT="${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}"
+  echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
   EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
   echo $EUPS_SRC_PKGROOT
   EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
@@ -386,6 +397,10 @@ main() {
   define_platform
   #EUPS_BIN_PKGROOT=${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}
   #echo $EUPS_BIN_PKGROOT
+
+  #discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "46b24e8"
+  #local EBP=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "46b24e8")
+  #echo "BinPath: ${EBP}"
 
   echo "Setting environment ..."
   set_environment
