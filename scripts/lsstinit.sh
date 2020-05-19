@@ -15,7 +15,7 @@ LSST_PYTHON_VERSION=3
 LSST_MINICONDA_VERSION=${LSST_MINICONDA_VERSION:-4.7.12}
 LSST_MINICONDA_BASE_URL=${LSST_MINICONDA_BASE_URL:-https://repo.continuum.io/miniconda}
 LSST_CONDA_CHANNELS=${LSST_CONDA_CHANNELS:-"conda-forge"}
-MINICONDA_PATH=${MINICONDA_PATH:${HOME}/miniconda}  
+MINICONDA_PATH=${MINICONDA_PATH:-"${HOME}/miniconda"}  
 
 #  functions ----------------------
 print_error() {
@@ -53,9 +53,11 @@ config_curl() {
 #  main  ----------------------------
 config_curl
 
+echo "Installing miniconda in ${MINICONDA_PATH}"
+
 # test is conda is already installed
 CONDA_PATH=`which conda`
-if [[ ${CONDA_PATH} != "" ]]; then
+if [[ $? == 0 ]]; then
   echo "Found conda at ${CONDA_PATH}"
   echo "Please use the existing conda to install lsstinstall in your base environment."
   echo " > conda activate"
@@ -67,12 +69,12 @@ fi
 # identifying platform
 case $(uname -s) in
   Linux*)
-    local ana_platform='Linux-x86_64'
-    local pkg_postfix='linux-64'
+    ana_platform='Linux-x86_64'
+    pkg_postfix='linux-64'
     ;;
   Darwin*)
-    local ana_platform='MacOSX-x86_64'
-    local pkg_postfix='osx-64'
+    ana_platform='MacOSX-x86_64'
+    pkg_postfix='osx-64'
     ;;
   *)
     fail "Cannot install miniconda: unsupported platform $(uname -s)"
@@ -85,16 +87,22 @@ esac
 miniconda_lock="${MINICONDA_PATH}/.deployed"
 test -f "$miniconda_lock" || (
   miniconda_file_name="Miniconda${LSST_PYTHON_VERSION}"
-  miniconda_file_name+="-${miniconda_version}-${ana_platform}.sh"
+  miniconda_file_name+="-${LSST_MINICONDA_VERSION}-${ana_platform}.sh"
 
   echo " -> Deploying ${miniconda_file_name}"
 
   cd "/tmp"
   $CURL "${CURL_OPTS[@]}" -# -L \
     -O "${LSST_MINICONDA_BASE_URL}/${miniconda_file_name}"
+  if [[ $? != 0 ]]; then
+    fail "Unable to download ${miniconda_file_name}."
+  fi
 
   rm -rf "${MINICONDA_PATH}"
   bash "${miniconda_file_name}" -b -p "${MINICONDA_PATH}"
+  if [[ $? != 0 ]]; then
+    fail "Unable to install ${miniconda_file_name}."
+  fi
 
   touch "${miniconda_lock}"
   rm "${miniconda_file_name}"
@@ -106,6 +114,11 @@ test -f "$miniconda_lock" || (
 . "${MINICONDA_PATH}/etc/profile.d/conda.sh"
 conda init
 
+echo
+echo "-----------------------------------------------"
+echo "Miniconda ${LSST_MINICONDA_VERSION} installed successfully and enabled."
+echo "(you may need to restart your shell)"
+echo "-----------------------------------------------"
 
 # configure alt conda channel(s)
 if [[ -n $LSST_CONDA_CHANNELS ]]; then
@@ -125,5 +138,6 @@ fi
 
 
 # installing lsstinstall
-conda activate
-conda install lsstinstall
+# - now commented since lsstinstall conda package is not available yet
+# conda activate
+# conda install lsstinstall
