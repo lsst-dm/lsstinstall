@@ -114,28 +114,20 @@ test -f "$miniconda_lock" || (
 . "${MINICONDA_PATH}/etc/profile.d/conda.sh"
 conda init
 
-echo
-echo "-----------------------------------------------"
-echo "Miniconda ${LSST_MINICONDA_VERSION} installed successfully and enabled."
-echo "(you may need to restart your shell)"
-echo "-----------------------------------------------"
-
 # configure alt conda channel(s)
 if [[ -n $LSST_CONDA_CHANNELS ]]; then
-  # remove any previously configured non-default channels
-  # XXX allowed to fail
-  conda config --remove-key channels || true
-
   for c in $LSST_CONDA_CHANNELS; do
     conda config --add channels "$c"
   done
 
   # remove the default channels
   conda config --remove channels defaults
-
-  conda config --show
 fi
 
+echo
+echo "-----------------------------------------------"
+echo "Miniconda ${LSST_MINICONDA_VERSION} installed successfully and enabled."
+echo "-----------------------------------------------"
 
 # installing lsstinstall
 # - now commented since lsstinstall conda package is not available yet
