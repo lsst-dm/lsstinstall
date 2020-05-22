@@ -312,7 +312,7 @@ create_environment() {
   conda info | grep "active environment"
   # checking if eups is included in the environment
   EUPS_CHECK=`which eups`
-  if [ -z "${EUPS_CHECK}" ]; then
+  if [[ "$?" != 0 ]]; then
     conda install -y eups -c conda-forge
   fi
 
