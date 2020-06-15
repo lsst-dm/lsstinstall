@@ -297,15 +297,15 @@ discover_url(){
 create_environment() {
 
   local pyver_prefix=$LSST_PYTHON_VERSION
-  local env_def_file="conda${pyver_prefix}_packages-${pkg_postfix}.yml"
+  local env_def_file="conda-${pkg_postfix}.lock"
   local env_url="https://raw.githubusercontent.com/${ENV_REPO_ORG}/${ENV_REPO_NAME}/${ENV_REF}/etc/"
-  local env_file="${ENVS_FOLDER}/${ENV_REF}/${env_def_file}"
+  local env_file="${ENVS_FOLDER}/${ENV_REF}/${env_def_file}.yml"
   echo " ... looking for ${env_def_file} in ${env_url}"
   mkdir -p "${env_file%/*}"
   # downloading environment definitino file
   $CURL "${CURL_OPTS[@]}" -# -L "${env_url}/${env_def_file}" --output "${env_file}"  
   # creating environment
-  conda env update --name "${LSST_CONDA_ENV_NAME}" --file "${env_file}"
+  conda create --name "${LSST_CONDA_ENV_NAME}" --file "${env_file}"
 
   # setting up eups
   conda activate "${LSST_CONDA_ENV_NAME}"  
