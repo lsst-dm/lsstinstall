@@ -35,7 +35,6 @@ ENVS_FOLDER="${LSST_HOME}/envs"
 # following string is used to build the EUPS_PKGROOT where binaries are stored
 #    since the binaries should only depend on the conda environment,
 #    there should be no need to include this in the EUPS_PKGROOT
-MINICONDA_STR="miniconda${LSST_PYTHON_VERSION}-4.7.12"
 USE_ONLY_SRC=false
 CONDA_ENV_BASE_NAME=lsst-scipipe
 SETUP_ONLY=false
@@ -99,8 +98,9 @@ usage() {
 
 check_conda() {
   # activating conda
-  CONDA_PATH=`which conda`
-  CONDA_DIR=`dirname "${CONDA_PATH}"`
+  CONDA_PATH=$(which conda)
+  CONDA_DIR=$(dirname "${CONDA_PATH}")
+  # shellcheck disable=SC1090  
   . "${CONDA_DIR}/../etc/profile.d/conda.sh"
 }
 
@@ -160,7 +160,7 @@ parse_args() {
 
 
 create_load_script() {
-  echo File to source: $config_file
+  echo "File to source: $config_file"
   cmd_setup_conda="$(cat <<-EOF
 	export LSST_CONDA_ENV_NAME=${LSST_CONDA_ENV_NAME}
 	# shellcheck disable=SC1091
@@ -175,7 +175,7 @@ create_load_script() {
 		#     eups product: ${EUPS_PRODUCT}
 		#     eups tag:     ${EUPS_TAG}
 		#
-		# Usage: source $(basename $config_file)
+		# Usage: source $(basename "$config_file")
 
 		${cmd_setup_conda}
 		LSST_HOME="${LSST_HOME}"
@@ -194,6 +194,9 @@ create_load_script() {
 		  export EUPS_PKGROOT=\${EUPS_PKGROOT:-\${EUPS_BIN_PKGROOT}|\${EUPS_SRC_PKGROOT}}
 		fi
 		export EUPS_PATH=${EUPS_PATH}
+		echo "Eups ready:"
+		echo "  EUPS_PATH: $${EUPS_PATH}"
+		echo "  EUPS_PKGROOT: $${EUPS_PKGROOT}"
 	EOF
 
 }
@@ -274,13 +277,13 @@ discover_url(){
   # It would be preferable to have this information stored in eups.lsst.codes for each build
   #  - compiler
   #  - miniconda version
-  first_level=`curl -s ${1} | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }'`
+  first_level=$(curl -s "${1}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }')
   local BIN_PATH=''
   for line in ${first_level}
   do
     url="${1}/${line}"
     #(curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent)
-    second_level=`curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }' | grep $2`
+    second_level=$(curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }' | grep $2)
     for path in ${second_level}
     do
       if [[ ${BIN_PATH} == '' ]]; then
@@ -296,7 +299,6 @@ discover_url(){
 
 create_environment() {
 
-  local pyver_prefix=$LSST_PYTHON_VERSION
   local env_def_file="conda-${pkg_postfix}.lock"
   local env_url="https://raw.githubusercontent.com/${ENV_REPO_ORG}/${ENV_REPO_NAME}/${ENV_REF}/etc/"
   local env_file="${ENVS_FOLDER}/${ENV_REF}/${env_def_file}.yml"
@@ -311,8 +313,8 @@ create_environment() {
   conda activate "${LSST_CONDA_ENV_NAME}"  
   conda info | grep "active environment"
   # checking if eups is included in the environment
-  EUPS_CHECK=`which eups`
-  if [[ "$?" != 0 ]]; then
+  if ! which eups > /dev/null; then
+  #if [[ "$?" != 0 ]]; then
     conda install -y eups -c conda-forge
   fi
 
@@ -325,52 +327,76 @@ create_environment() {
 
   # set EUPS_PKG_ROOT
   EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
-  #EUPS_BIN_PKGROOT="${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}"
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
   EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
-  echo $EUPS_SRC_PKGROOT
+  echo "$EUPS_SRC_PKGROOT"
   EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
-  echo $EUPS_PKGROOT
+  echo "$EUPS_PKGROOT"
 
   create_load_script
 
 }
 
+fix_config_file() {
+  # the environment exists but not the config file to activate it
+  # this functino is to recreate the config file
+
+  # creating new EUPS_PATH
+  EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
+  mkdir -p "${EUPS_PATH}"/{site,ups_db}
+
+  # set EUPS_PKG_ROOT
+  EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
+  echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
+  EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
+  echo "$EUPS_SRC_PKGROOT"
+  EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  echo "$EUPS_PKGROOT"
+
+  create_load_script
+
+}
 
 set_environment() {
   LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
   LIST_URL="${LIST_BASE_URL}"/"${EUPS_TAG}".list
-  RAW_ENV_INFO=`"${CURL}" -s "${LIST_URL}" | grep CONDA_ENV`
+  RAW_ENV_INFO=$("${CURL}" -s "${LIST_URL}" | grep CONDA_ENV)
 
   if [ -z "${RAW_ENV_INFO}" ]; then
     fail "Eups tag ${EUPS_TAG} for product ${EUPS_PRODUCT} not related to any environment."
   fi
 
-  RAW_ENV_REPO=`echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }'`
-  ENV_REPO_URL=`echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $1 }'`
-  ENV_REF=`echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $2 }'`
-  ENV_REPO_NAME=`echo ${ENV_REPO_URL} | awk -F '/' '{ print $5 }' | awk -F '.' '{ print $1 }'`
-  ENV_REPO_ORG=`echo ${ENV_REPO_URL} | awk -F '/' '{ print $4 }'`
+  RAW_ENV_REPO=$(echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }')
+  ENV_REPO_URL=$(echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $1 }')
+  ENV_REF=$(echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $2 }')
+  ENV_REPO_NAME=$(echo ${ENV_REPO_URL} | awk -F '/' '{ print $5 }' | awk -F '.' '{ print $1 }')
+  ENV_REPO_ORG=$(echo ${ENV_REPO_URL} | awk -F '/' '{ print $4 }')
   # echo "Retriving conda environment information forom respository ${ENV_REPO_URL}, SHA-1 ${ENV_REF}."
 
   export LSST_CONDA_ENV_NAME="${CONDA_ENV_BASE_NAME}-${ENV_REF}"
 
   # defining the filename to source for environment configuration
-  config_file_name="lsst_${ENV_REF}_env.sh"
   config_file="${ENVS_FOLDER}/${ENV_REF}/loadLSST_${ENV_REF}_env.sh"
 
   # check if the environment exist
-  ENV_CHECK=`conda env list | grep ^${LSST_CONDA_ENV_NAME}`
+  ENV_CHECK=$(conda env list | grep ^${LSST_CONDA_ENV_NAME})
   if [ -z "${ENV_CHECK}" ]; then
     echo " ... creating new environemnt ${LSST_CONDA_ENV_NAME} ..."
     create_environment "${LSST_CONDA_ENV_NAME}"
   fi
-  #conda activate "${LSST_CONDA_ENV_NAME}"
+  # check if config file exists
+  if [ ! -f "${config_file}" ]; then
+    echo " ... config file missing, recreating environemnt ${LSST_CONDA_ENV_NAME} ..."
+    fix_config_file "${LSST_CONDA_ENV_NAME}"
+  fi
+  # source config file to enable environment
   if [ "${USE_ONLY_SRC}" == "false" ]; then
     echo "  ... configuring eups to install binary packages if available."
+    # shellcheck disable=SC1090
     source "${config_file}"
   else
     echo "  ... configuring eups to only build from source packages."
+    # shellcheck disable=SC1090
     source "${config_file}" -s
   fi
 
@@ -395,7 +421,6 @@ main() {
 
   #echo "Preparing ..."
   define_platform
-  #EUPS_BIN_PKGROOT=${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}/${target_cc}/${MINICONDA_STR}-${ENV_REF}
   #echo $EUPS_BIN_PKGROOT
 
   #discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "46b24e8"
