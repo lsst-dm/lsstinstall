@@ -29,7 +29,6 @@
 
 # defining the workspace, where lsstinstall will work
 LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
-LSST_PYTHON_VERSION=3
 EUPS_REPO_URL="${EUPS_REPO_URL:-https://eups.lsst.codes}"
 ENVS_FOLDER="${LSST_HOME}/envs"
 # following string is used to build the EUPS_PKGROOT where binaries are stored
@@ -283,7 +282,7 @@ discover_url(){
   do
     url="${1}/${line}"
     #(curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent)
-    second_level=$(curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }' | grep $2)
+    second_level=$(curl -s "${url}" | sed -e 's/<[^>]*>//g' | grep nbsp | grep -v Parent | awk -F '/' '{ print $1 }' | grep "$2")
     for path in ${second_level}
     do
       if [[ ${BIN_PATH} == '' ]]; then

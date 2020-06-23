@@ -87,15 +87,11 @@ if $INTERACTIVE ; then
   read -r -p "Choose environment [0 to ${l}]: " eid
   if  [[ "${eid}" -eq 0 ]] ; then
     return
-  fi
-  if [[ -z "${envs[${eid}]}" ]] ; then
+  elif [[ -z "${envs[${eid}]}" ]] ; then
     echo "User input error: ${eid} not in range."
     return
-  else
-    LSST_CONDA_ENV_NAME="${envs[${eid}]}"
-    # shellcheck disable=SC1091
-    # conda activate "$LSST_CONDA_ENV_NAME"
   fi
+  LSST_CONDA_ENV_NAME="${envs[${eid}]}"
 
   ENVREF="${LSST_CONDA_ENV_NAME: -7}"
   config_file="$ENVS_FOLDER/${ENVREF}/loadLSST_${ENVREF}_env.sh"
