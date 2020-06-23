@@ -195,8 +195,8 @@ create_load_script() {
 		fi
 		export EUPS_PATH=${EUPS_PATH}
 		echo "Eups ready:"
-		echo "  EUPS_PATH: $${EUPS_PATH}"
-		echo "  EUPS_PKGROOT: $${EUPS_PKGROOT}"
+		echo "  EUPS_PATH: \${EUPS_PATH}"
+		echo "  EUPS_PKGROOT: \${EUPS_PKGROOT}"
 	EOF
 
 }

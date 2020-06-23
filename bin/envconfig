@@ -58,7 +58,6 @@ parse_args() {
 # defining the workspace, where lsstinstall will work
 LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
 ENVS_FOLDER="${LSST_HOME}/envs"
-CONDA_ENV_BASE_NAME=lsst-scipipe
 INTERACTIVE=false
 ENVREF=""
 finish=false
@@ -68,8 +67,47 @@ parse_args "$@"
 if [ "$finish" = true ]; then
   return
 fi
+if $INTERACTIVE ; then
+  raw_envs=()
+  # get the list of available environments
+  while IFS=$'\n' read -r line 
+  do
+    if [[ "$line" != '' ]] ; then
+      raw_envs+=("$line")
+    fi
+  done < <(conda env list | grep -v "^#" | grep -v "^ " | grep -v "^base")
+  envs=()
+  l=0
+  for i in "${raw_envs[@]}"; do
+    ((l++))
+    envs[l]=$(echo "${i}" | cut -f 1 -d ' ')
+    echo "${l} - ${envs[${l}]}"
+  done
+  echo "0 - EXIT (return)"
+  read -r -p "Choose environment [0 to ${l}]: " eid
+  if  [[ "${eid}" -eq 0 ]] ; then
+    return
+  fi
+  if [[ -z "${envs[${eid}]}" ]] ; then
+    echo "User input error: ${eid} not in range."
+    return
+  else
+    LSST_CONDA_ENV_NAME="${envs[${eid}]}"
+    # shellcheck disable=SC1091
+    # conda activate "$LSST_CONDA_ENV_NAME"
+  fi
 
-if [[ $ENVREF != "" ]]; then
+  ENVREF="${LSST_CONDA_ENV_NAME: -7}"
+  config_file="$ENVS_FOLDER/${ENVREF}/loadLSST_${ENVREF}_env.sh"
+  if [ ! -f "${config_file}" ]; then
+    echo "No lsstinstall configuration available for ${LSST_CONDA_ENV_NAME}"
+    return
+  else
+    # shellcheck disable=SC1090
+    source "${config_file}"
+  fi
+
+elif [[ $ENVREF != "" ]]; then
     # shellcheck disable=SC1090
     source "$ENVS_FOLDER/${ENVREF}/loadLSST_${ENVREF}_env.sh"
 
