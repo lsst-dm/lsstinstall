@@ -368,8 +368,8 @@ set_environment() {
   RAW_ENV_REPO=$(echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }')
   ENV_REPO_URL=$(echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $1 }')
   ENV_REF=$(echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $2 }')
-  ENV_REPO_NAME=$(echo ${ENV_REPO_URL} | awk -F '/' '{ print $5 }' | awk -F '.' '{ print $1 }')
-  ENV_REPO_ORG=$(echo ${ENV_REPO_URL} | awk -F '/' '{ print $4 }')
+  ENV_REPO_NAME=$(echo "${ENV_REPO_URL}" | awk -F '/' '{ print $5 }' | awk -F '.' '{ print $1 }')
+  ENV_REPO_ORG=$(echo "${ENV_REPO_URL}" | awk -F '/' '{ print $4 }')
   # echo "Retriving conda environment information forom respository ${ENV_REPO_URL}, SHA-1 ${ENV_REF}."
 
   export LSST_CONDA_ENV_NAME="${CONDA_ENV_BASE_NAME}-${ENV_REF}"
@@ -378,7 +378,7 @@ set_environment() {
   config_file="${ENVS_FOLDER}/${ENV_REF}/loadLSST_${ENV_REF}_env.sh"
 
   # check if the environment exist
-  ENV_CHECK=$(conda env list | grep ^${LSST_CONDA_ENV_NAME})
+  ENV_CHECK=$(conda env list | grep "^${LSST_CONDA_ENV_NAME}")
   if [ -z "${ENV_CHECK}" ]; then
     echo " ... creating new environemnt ${LSST_CONDA_ENV_NAME} ..."
     create_environment "${LSST_CONDA_ENV_NAME}"
