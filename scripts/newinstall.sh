@@ -38,6 +38,26 @@ am_I_sourced() {
 }
 
 
+config_curl() {
+  # Prefer system curl; user-installed ones sometimes behave oddly
+  if [[ -x /usr/bin/curl ]]; then
+    CURL=${CURL:-/usr/bin/curl}
+  else
+    CURL=${CURL:-curl}
+  fi
+
+  # disable curl progress meter unless running under a tty -- this is intended to
+  # reduce the amount of console output when running under CI
+  CURL_OPTS=('-#')
+  if [[ ! -t 1 ]]; then
+    CURL_OPTS=('-sS')
+  fi
+
+  # curl will exit 0 on 404 without the fail flag
+  CURL_OPTS+=('--fail')
+}
+
+
 main() {
 
   # check if conda is not already available
@@ -63,10 +83,20 @@ main() {
       ;;
   esac
 
-  curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
+  miniconda_remote="https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh"
+  output_file=/tmp/miniconda.sh
+  # curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
+  $CURL "${CURL_OPTS[@]}" \
+    -L \
+    "${miniconda_remote}" \
+    -o "$output_file"
+  if [ "$?" != 0]; then
+    fail "Error downloading miniconda from the internet."
+  fi
   bash /tmp/miniconda.sh -bfp "${MINICONDA_PATH}"
   rm -rf /tmp/miniconda.sh
 
+  # shellcheck disable=SC1090
   source "${MINICONDA_PATH}/etc/profile.d/conda.sh"
 
   # deploy lsst install

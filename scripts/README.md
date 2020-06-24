@@ -5,4 +5,5 @@ This script is meant to be used for whom has no experience with conda/anaconda/m
 
 It will provide a ready to use lsstinstall environment.
 
-Use this script only if you don'y have an existing installation of anaconda/miniconda in your user/machine.
+Use this script only if you don'y have an existing installation of
+anaconda/miniconda in your user/machine.
