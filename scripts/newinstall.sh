@@ -59,6 +59,7 @@ config_curl() {
 
 
 main() {
+  config_curl
 
   # check if conda is not already available
   if which conda > /dev/null; then
@@ -87,7 +88,7 @@ main() {
   output_file=/tmp/miniconda.sh
   # curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
   $CURL "${CURL_OPTS[@]}" -# -L "${miniconda_remote}" -o "$output_file"
-  if [ "$?" != 0]; then
+  if [ "$?" != 0 ]; then
     fail "Error downloading miniconda from the internet."
   fi
   bash /tmp/miniconda.sh -bfp "${MINICONDA_PATH}"
