@@ -112,6 +112,9 @@ main() {
   # as soon as lsstinstall will be available in conda-forge, this has to be updated.
   conda install  -y lsstinstall -c gcomoretto
 
+  echo
+  echo "Miniconda installed and configured, including lsstinstall in base envinronment"
+  echo " Login again to start using lsstinstal."
 }
 
 
