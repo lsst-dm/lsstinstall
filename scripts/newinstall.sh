@@ -22,6 +22,22 @@ fail() {
 }
 
 
+#
+# test to see if script is being sourced or executed. Note that this function
+# will work correctly when the source is being piped to a shell. `Ie., cat
+# newinstall.sh | bash -s`
+#
+# See: https://stackoverflow.com/a/12396228
+#
+am_I_sourced() {
+  if [ "${FUNCNAME[1]}" = source ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
 main() {
 
   # check if conda is not already available
@@ -30,7 +46,7 @@ main() {
   fi
 
   # check if MINICONDA_PATH do not exist
-  if [ -d ""${MINICONDA_PATH} ]; then
+  if [ -d "${MINICONDA_PATH}" ]; then
     fail "It appears you have already a miniconda installation. Please use it to deploy lsstinstall."
   fi
 
@@ -47,8 +63,8 @@ main() {
       ;;
   esac
 
-  curl -sSL https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh -o /tmp/miniconda.sh
-  bash /tmp/miniconda.sh -bfp ${MINICONDA_PATH}
+  curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
+  bash /tmp/miniconda.sh -bfp "${MINICONDA_PATH}"
   rm -rf /tmp/miniconda.sh
 
   source "${MINICONDA_PATH}/etc/profile.d/conda.sh"

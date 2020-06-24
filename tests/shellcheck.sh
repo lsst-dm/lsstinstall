@@ -4,7 +4,7 @@ set -e
 shopt -s globstar nullglob
 
 CHECK=( **/*.sh bin/* )
-IGNORE=( **/*.csh)
+IGNORE=( **/*.csh bin/*.md)
 
 for c in "${!CHECK[@]}"; do
   for i in "${IGNORE[@]}"; do

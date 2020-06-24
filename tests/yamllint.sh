@@ -5,7 +5,7 @@ shopt -s globstar nullglob
 
 CHECK=( **/*.yaml **/*.yml **/*.eyaml .travis.yml )
 EYAML=( **/*.eyaml )
-IGNORE=()
+IGNORE=(recipe/*.*)
 
 # filter out plaintext versions of .eyaml files
 for e in "${!EYAML[@]}"; do
