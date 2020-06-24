@@ -14,9 +14,14 @@ LSST_MINICONDA_BASE_URL=${LSST_MINICONDA_BASE_URL:-https://repo.continuum.io/min
 MINICONDA_PATH=${MINICONDA_PATH:-${HOME}/miniconda}
 
 
+print_error() {
+  >&2 echo -e "$@"
+}
+
+
 fail() {
   local code=${2:-1}
-  [[ -n $1 ]] && n8l::print_error "$1"
+  [[ -n $1 ]] && print_error "$1"
   # shellcheck disable=SC2086
   exit $code
 }
@@ -80,11 +85,12 @@ main() {
       ana_platform="MacOSX-x86_64"
       ;;
     *)
-      n8l::fail "Cannot install miniconda: unsupported platform $(uname -s)"
+      fail "Cannot install miniconda: unsupported platform $(uname -s)"
       ;;
   esac
 
   miniconda_remote="https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh"
+  echo "Getting miniconda from ${miniconda_remote}"
   output_file=/tmp/miniconda.sh
   # curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
   $CURL "${CURL_OPTS[@]}" -# -L "${miniconda_remote}" -o "$output_file"
