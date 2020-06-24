@@ -101,6 +101,9 @@ main() {
   bash /tmp/miniconda.sh -bfp "${MINICONDA_PATH}"
   rm -rf /tmp/miniconda.sh
 
+  # shellcheck disable=SC1090
+  source "${MINICONDA_PATH}/etc/profile.d/conda.sh"
+
   # enable conda in shell profile
   conda init
 
