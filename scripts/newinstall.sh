@@ -94,19 +94,20 @@ main() {
   output_file=/tmp/miniconda.sh
   # curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
   $CURL "${CURL_OPTS[@]}" -# -L "${miniconda_remote}" -o "$output_file"
+  # shellcheck disable=SC2181
   if [ "$?" != 0 ]; then
     fail "Error downloading miniconda from the internet."
   fi
   bash /tmp/miniconda.sh -bfp "${MINICONDA_PATH}"
   rm -rf /tmp/miniconda.sh
 
-  # shellcheck disable=SC1090
-  source "${MINICONDA_PATH}/etc/profile.d/conda.sh"
+  # enable conda in shell profile
+  conda init
 
   # deploy lsst install
   conda activate
   # as soon as lsstinstall will be available in conda-forge, this has to be updated.
-  conda install lsstinstall -c gcomoretto
+  conda install  -y lsstinstall -c gcomoretto
 
 }
 
