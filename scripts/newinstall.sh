@@ -89,7 +89,7 @@ main() {
       ;;
   esac
 
-  miniconda_remote="https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh"
+  miniconda_remote="https://repo.continuum.io/miniconda/Miniconda3-${LSST_MINICONDA_VERSION}-${ana_platform}.sh"
   echo "Getting miniconda from ${miniconda_remote}"
   output_file=/tmp/miniconda.sh
   # curl -sSL "https://repo.continuum.io/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${ana_platform}.sh" -o /tmp/miniconda.sh
