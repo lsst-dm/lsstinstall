@@ -351,6 +351,13 @@ fix_config_file() {
   EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
   echo "$EUPS_PKGROOT"
 
+  config_folder="${ENVS_FOLDER}/${ENV_REF}"
+  echo "$config_folder"
+
+  if [ ! -d "$config_folder" ]; then
+    mkdir -p "$config_folder"
+  fi
+
   create_load_script
 
 }
