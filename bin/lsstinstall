@@ -85,6 +85,7 @@ usage() {
 		-p          Prepare Only. Check if the environment for a specific build is available.
 		            In case it is not, it will be deployed and the activation script generated.
 		            No eups distrib install will be executed.
+		            Config file (to source) is regenerate.
 		            Do not use together with -s option
 
 		-h          Show this message
@@ -314,15 +315,16 @@ create_environment() {
   # creating environment
   conda create --name "${LSST_CONDA_ENV_NAME}" --file "${env_file}"
 
-  # setting up eups
-  conda activate "${LSST_CONDA_ENV_NAME}"  
-  conda info | grep "active environment"
-  # checking if eups is included in the environment
-  if ! which eups > /dev/null; then
-    conda install -y eups -c conda-forge
-  fi
-
-  conda deactivate
+  # DISABLED: using stacked environment instead
+  ## setting up eups
+  # conda activate "${LSST_CONDA_ENV_NAME}"  
+  #conda info | grep "active environment"
+  ## checking if eups is included in the environment
+  #if ! which eups > /dev/null; then
+  #  conda install -y eups -c conda-forge
+  #fi
+  #
+  #conda deactivate
 
   # creating new EUPS_PATH
   EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
@@ -395,8 +397,10 @@ set_environment() {
     echo " ... creating new environemnt ${LSST_CONDA_ENV_NAME} ..."
     create_environment "${LSST_CONDA_ENV_NAME}"
   fi
+
   # check if config file exists
-  if [ ! -f "${config_file}" ]; then
+  # config file regenerated when setup-only is given
+  if [ ! -f "${config_file}" ] || [ "$SETUP_ONLY" == "false" ] ; then
     echo " ... config file missing, recreating environemnt ${LSST_CONDA_ENV_NAME} ..."
     fix_config_file "${LSST_CONDA_ENV_NAME}"
   fi
