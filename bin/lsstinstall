@@ -164,7 +164,13 @@ create_load_script() {
 	export LSST_CONDA_ENV_NAME=${LSST_CONDA_ENV_NAME}
 	# shellcheck disable=SC1091
 	source "${CONDA_DIR}/../etc/profile.d/conda.sh"
-	conda activate "\$LSST_CONDA_ENV_NAME"
+        if conda env list | grep "^eups "  > /dev/null; then
+          conda activate eups
+        else
+          echo "Environment EUPS base environment missing"
+          return
+        fi
+	conda activate --stack "\$LSST_CONDA_ENV_NAME"
 	EOF
   )"
 
