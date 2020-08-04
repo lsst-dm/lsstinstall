@@ -29,6 +29,7 @@
 
 # defining the workspace, where lsstinstall will work
 LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
+# you can define a local EUPS_REPO_URL, use an absolute path
 EUPS_REPO_URL="${EUPS_REPO_URL:-https://eups.lsst.codes}"
 ENVS_FOLDER="${LSST_HOME}/envs"
 # following string is used to build the EUPS_PKGROOT where binaries are stored
@@ -337,7 +338,11 @@ create_environment() {
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
   EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
   echo "$EUPS_SRC_PKGROOT"
-  EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
+    EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  else
+    EUPS_PKGROOT="${EUPS_SRC_PKGROOT}"
+  fi
   echo "$EUPS_PKGROOT"
 
   create_load_script
@@ -357,7 +362,11 @@ fix_config_file() {
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
   EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
   echo "$EUPS_SRC_PKGROOT"
-  EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
+    EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  else
+    EUPS_PKGROOT="${EUPS_SRC_PKGROOT}"
+  fi
   echo "$EUPS_PKGROOT"
 
   config_folder="${ENVS_FOLDER}/${ENV_REF}"
@@ -374,6 +383,16 @@ fix_config_file() {
 set_environment() {
   LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
   LIST_URL="${LIST_BASE_URL}"/"${EUPS_TAG}".list
+  # check if it is not an https link
+  if [[ "${LIST_URL:0:4}" != "http" ]]; then
+    # in this case the provided repo URL has to be an absolute path
+    if [[ "${LIST_URL:0:1}" == "/" ]]; then
+      LIST_URL="file://${LIST_URL}"
+    else
+      fail "Error defining EUPS_PKGROOT: provided wrong input in EUPS_REPO_URL:\n -> ${EUPS_REPO_URL}"
+    fi
+  fi
+  echo "Looking for environment information in:\n --> $LIST_URL"
   RAW_ENV_INFO=$("${CURL}" -s "${LIST_URL}" | grep CONDA_ENV)
 
   if [ -z "${RAW_ENV_INFO}" ]; then
@@ -430,7 +449,7 @@ main() {
   echo "LSST_HOME set to ${LSST_HOME}"
   mkdir -p "${LSST_HOME}"
 
-  # I assume a valid conda is already installed
+  # It assumes a valid conda is already installed
   # we can add a check and if not present install a miniconda
   # howeverm if this tool is distributed as conda package this is not needed
   check_conda
