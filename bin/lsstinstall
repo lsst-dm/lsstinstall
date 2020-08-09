@@ -421,7 +421,7 @@ set_environment() {
 
   # check if config file exists
   # config file regenerated when setup-only is given
-  if [ ! -f "${config_file}" || "$SETUP_ONLY" == "true" ] ; then
+  if [ ! -f "${config_file}" ] || [ "$SETUP_ONLY" == "true" ] ; then
     echo " ... config file missing, recreating environemnt ${LSST_CONDA_ENV_NAME} ..."
     fix_config_file "${LSST_CONDA_ENV_NAME}"
   fi
