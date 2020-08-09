@@ -21,6 +21,6 @@ done
 echo
 
 docker run -ti -v "$(pwd):$(pwd)" -w "$(pwd)" \
-  markdownlint/markdownlint:latest "${CHECK[@]}"
+  markdownlint/markdownlint "${CHECK[@]}"
 
 # vim: tabstop=2 shiftwidth=2 expandtab
