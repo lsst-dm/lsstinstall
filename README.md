@@ -10,6 +10,6 @@ The newinstall.sh in scripts/ provides an easy way to get the
 tool deployed in your environment, in case you don't have a preinstalled conda.
 Please refer to scripts/README.md.
 
-If you want to contribute to the development, 
+If you want to contribute to the development,
 and can be used as is after cloning this repository.
 Please refer to bin/README.md.

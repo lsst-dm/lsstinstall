@@ -392,6 +392,7 @@ set_environment() {
       fail "Error defining EUPS_PKGROOT: provided wrong input in EUPS_REPO_URL:\\n -> ${EUPS_REPO_URL}"
     fi
   fi
+  # shellcheck disable=SC2028
   echo "Looking for environment information from:\\n --> ${LIST_URL}"
   RAW_ENV_INFO=$("${CURL}" -s "${LIST_URL}" | grep CONDA_ENV)
 
@@ -420,7 +421,7 @@ set_environment() {
 
   # check if config file exists
   # config file regenerated when setup-only is given
-  if [ ! -f "${config_file}" -o "$SETUP_ONLY" == "true" ] ; then
+  if [ ! -f "${config_file}" || "$SETUP_ONLY" == "true" ] ; then
     echo " ... config file missing, recreating environemnt ${LSST_CONDA_ENV_NAME} ..."
     fix_config_file "${LSST_CONDA_ENV_NAME}"
   fi
