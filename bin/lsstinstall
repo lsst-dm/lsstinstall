@@ -389,10 +389,10 @@ set_environment() {
     if [[ "${LIST_URL:0:1}" == "/" ]]; then
       LIST_URL="file://${LIST_URL}"
     else
-      fail "Error defining EUPS_PKGROOT: provided wrong input in EUPS_REPO_URL:\n -> ${EUPS_REPO_URL}"
+      fail "Error defining EUPS_PKGROOT: provided wrong input in EUPS_REPO_URL:\\n -> ${EUPS_REPO_URL}"
     fi
   fi
-  echo "Looking for environment information in:\n --> $LIST_URL"
+  echo "Looking for environment information from:\\n --> ${LIST_URL}"
   RAW_ENV_INFO=$("${CURL}" -s "${LIST_URL}" | grep CONDA_ENV)
 
   if [ -z "${RAW_ENV_INFO}" ]; then
