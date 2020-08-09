@@ -18,7 +18,7 @@ expect() {
 
 case $MODE in
 prepare-only)
-  echo -e "*** testing lsstinstall prepare-only more ***"
+  echo -e "*** testing lsstinstall prepare-only mode ***"
   ./bin/lsstinstall -p -t d_2020_04_13 lsst_distrib
   ;;
 help)
