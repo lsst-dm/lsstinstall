@@ -21,6 +21,6 @@ done
 echo
 
 docker run -ti -v "$(pwd):$(pwd)" -w "$(pwd)" \
-  mivok/markdownlint:0.4.0 "${CHECK[@]}"
+  markdownlint/markdownlint:latest "${CHECK[@]}"
 
 # vim: tabstop=2 shiftwidth=2 expandtab

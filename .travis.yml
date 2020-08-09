@@ -18,10 +18,6 @@ matrix:
       env: TEST=shellcheck
       script: ./tests/shellcheck.sh
 
-    - <<: *plumb
-      env: TEST=hadolint
-      script: ./tests/hadolint.sh
-
   # osx builds are often very slow to start due to high demand
   fast_finish: true
   # allow_failures:

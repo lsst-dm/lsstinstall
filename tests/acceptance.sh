@@ -2,24 +2,10 @@
 
 set -Eeo pipefail
 
-expect() {
-  local title="$1"
-  local is="$2"
-  local should="$3"
-
-  echo -e "$title"
-
-  if [[ "$is" != "$should" ]]; then
-     echo -e "    expected(${should})"
-     echo -e "    got(${is})"
-     exit 1
-  fi
-}
-
 case $MODE in
 prepare-only)
   echo -e "*** testing lsstinstall prepare-only mode ***"
-  ./bin/lsstinstall -p -t d_2020_04_13 lsst_distrib
+  ./bin/lsstinstall -p -t w_2020_32 lsst_distrib
   ;;
 help)
   echo -e "*** testing lsstinstall help ***"

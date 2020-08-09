@@ -2,30 +2,26 @@
 
 # maybe this should be called lsstconfig (?)
 
-print_error() {
-  >&2 echo -e "$@"
-}
 
 usage() {
   if [[ ! -z "$1" ]]; then
-    print_error "$0: $1"
+     >&2 echo -e "$0: $1"
   fi
 
   # note that heredocs are prefixed with tab chars
   (cat <<-EOF
 
-		Usage: $0  [-i] [-r] [-h]
+		Usage: $0  [-r] [-h]
+	
+	        Propose a list of environment configured from previous lsstinstall runs
+                to choose interactivelly (Default, with no input options).
 
 		Specific options:
-	-i          interactive, choose from a list of available environments
-	            (Default)
 	-r REF      activate the environment corresponding to REF
 	-h          show this message
 
 		EOF
   )
-
-  finish=true
 
 }
 
@@ -39,14 +35,11 @@ parse_args() {
       shift;
       ENVREF=$1
       ;;
-    i)
-      INTERACTIVE=true
-      ;;
     h)
-      usage
+      usage; return 1
       ;;
     *)
-      usage "Unknown option: ${opt}"
+      usage "Unknown option: ${opt}"; return 1
       ;;
     esac
   done
@@ -58,52 +51,12 @@ parse_args() {
 # defining the workspace, where lsstinstall will work
 LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
 ENVS_FOLDER="${LSST_HOME}/envs"
-INTERACTIVE=false
 ENVREF=""
-finish=false
 
-parse_args "$@"
+parse_args "$@" || return
 
-if [ "$finish" = true ]; then
-  return
-fi
-if $INTERACTIVE ; then
-  raw_envs=()
-  # get the list of available environments
-  while IFS=$'\n' read -r line 
-  do
-    if [[ "$line" != '' ]] ; then
-      raw_envs+=("$line")
-    fi
-  done < <(conda env list | grep -v "^#" | grep -v "^ " | grep -v "^base")
-  envs=()
-  l=0
-  for i in "${raw_envs[@]}"; do
-    ((l++))
-    envs[l]=$(echo "${i}" | cut -f 1 -d ' ')
-    echo "${l} - ${envs[${l}]}"
-  done
-  echo "0 - EXIT (return)"
-  read -r -p "Choose environment [0 to ${l}]: " eid
-  if  [[ "${eid}" -eq 0 ]] ; then
-    return
-  elif [[ -z "${envs[${eid}]}" ]] ; then
-    echo "User input error: ${eid} not in range."
-    return
-  fi
-  LSST_CONDA_ENV_NAME="${envs[${eid}]}"
 
-  ENVREF="${LSST_CONDA_ENV_NAME: -7}"
-  config_file="$ENVS_FOLDER/${ENVREF}/loadLSST_${ENVREF}_env.sh"
-  if [ ! -f "${config_file}" ]; then
-    echo "No lsstinstall configuration available for ${LSST_CONDA_ENV_NAME}"
-    return
-  else
-    # shellcheck disable=SC1090
-    source "${config_file}"
-  fi
-
-elif [[ $ENVREF != "" ]]; then
+if [[ $ENVREF != "" ]]; then
     # shellcheck disable=SC1090
     source "$ENVS_FOLDER/${ENVREF}/loadLSST_${ENVREF}_env.sh"
 
