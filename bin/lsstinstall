@@ -38,6 +38,7 @@ ENVS_FOLDER="${LSST_HOME}/envs"
 USE_ONLY_SRC=false
 CONDA_ENV_BASE_NAME=lsst-scipipe
 SETUP_ONLY=false
+NAMESPACE=false
 
 
 #
@@ -130,13 +131,16 @@ parse_args() {
   local OPTIND
   local opt
 
-  while getopts "stph" opt; do
+  while getopts "spnth" opt; do
     case "$opt" in
     s)
       USE_ONLY_SRC=true
       ;;
     p)
       SETUP_ONLY=true
+      ;;
+    n)
+      NAMESPACE=true
       ;;
     t)
       # if -s option is giving, an extra shift is required
@@ -381,7 +385,11 @@ fix_config_file() {
 }
 
 set_environment() {
-  LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
+  if [ "${NAMESPACE}" = true ]; then
+    LIST_BASE_URL="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}src/tags"
+  else
+    LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
+  fi
   LIST_URL="${LIST_BASE_URL}"/"${EUPS_TAG}".list
   # check if it is not an https link
   if [[ "${LIST_URL:0:4}" != "http" ]]; then
