@@ -337,10 +337,15 @@ create_environment() {
   mkdir -p "${EUPS_PATH}"/{site,ups_db}
 
 
-  # set EUPS_PKG_ROOT
-  EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
+  # set EUPS_PKGROOT
+  if [ "${NAMESPACE}" = true ]; then
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/src"
+  else
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
+  fi
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
-  EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
   echo "$EUPS_SRC_PKGROOT"
   if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
     EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
@@ -362,9 +367,14 @@ fix_config_file() {
   mkdir -p "${EUPS_PATH}"/{site,ups_db}
 
   # set EUPS_PKG_ROOT
-  EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
+  if [ "${NAMESPACE}" = true ]; then
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/src"
+  else
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
+  fi
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
-  EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
   echo "$EUPS_SRC_PKGROOT"
   if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
     EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
@@ -386,7 +396,7 @@ fix_config_file() {
 
 set_environment() {
   if [ "${NAMESPACE}" = true ]; then
-    LIST_BASE_URL="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}src/tags"
+    LIST_BASE_URL="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/src/tags"
   else
     LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
   fi
