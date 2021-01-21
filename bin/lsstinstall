@@ -30,8 +30,10 @@
 # defining the workspace, where lsstinstall will work
 LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
 # you can define a local EUPS_REPO_URL, use an absolute path
-EUPS_REPO_URL="${EUPS_REPO_URL:-https://eups.lsst.codes}"
+EUPS_REPO_URL="${EUPS_REPO_URL:-https://eups.lsst.codes/stack}"
 ENVS_FOLDER="${LSST_HOME}/envs"
+LSST_MINICONDA_VERSION=${LSST_MINICONDA_VERSION:-py38_4.9.2}
+LSST_MINICONDA_BASE_URL=${LSST_MINICONDA_BASE_URL:-https://repo.continuum.io/miniconda}
 # following string is used to build the EUPS_PKGROOT where binaries are stored
 #    since the binaries should only depend on the conda environment,
 #    there should be no need to include this in the EUPS_PKGROOT
@@ -39,6 +41,7 @@ USE_ONLY_SRC=false
 CONDA_ENV_BASE_NAME=lsst-scipipe
 SETUP_ONLY=false
 NAMESPACE=false
+USE_EXISTING_CONDA=false
 
 
 #
@@ -76,19 +79,23 @@ usage() {
 
   # note that heredocs are prefixed with tab chars
   fail "$(cat <<-EOF
-		Usage: $0 [-h] [-s] -t eups_tag eups_product
+		Usage: $0 [-h] [-s] [-p] i[-n] [-P] -t eups_tag eups_product
 
 		-t          Install eups_tag of eups_product after ensuring that the proper conda environment is available. 
 		            In case it is not, it will be deployed and activated before execute the eups distrib install..
 
-		-s          Only use EUPS source "eupspkg" packages.
+		-s          Optional. Only use EUPS source "eupspkg" packages.
 		            Do not use together with -p option.
 
-		-p          Prepare Only. Check if the environment for a specific build is available.
+		-p          Optional. Prepare Only. Check if the environment for a specific build is available.
 		            In case it is not, it will be deployed and the activation script generated.
 		            No eups distrib install will be executed.
 		            Config file (to source) is regenerate.
 		            Do not use together with -s option
+
+		-n          Optional. Search for eups_products organized in namespaces in remote EUPS_PKGROOT.
+
+		-P          Optional. Use a preinstalled conda. Fails if no valid conda is found.
 
 		-h          Show this message
 		
@@ -99,11 +106,41 @@ usage() {
 
 
 check_conda() {
-  # activating conda
-  CONDA_PATH=$(which conda)
-  CONDA_DIR=$(dirname "${CONDA_PATH}")
+  if [ "${USE_EXISTING_CONDA}" = true ]; then
+    CONDA_PATH=$(which conda)
+    if [ "${CONDA_PATH}" =="" ]; then
+      fail "No conda found executable found in the system. Please avoid using option -P"
+    else
+      miniconda_path="$(dirname "${CONDA_PATH}")/.."
+    fi
+  else
+    mkdir -p "${LSST_HOME}"/{miniconda,sources}
+    miniconda_path="$LSST_HOME/miniconda"
+    local sources_dir="$LSST_HOME/sources"
+    local miniconda_version="$LSST_MINICONDA_VERSION"
+    # install miniconda
+    # shellcheck disable=SC2154
+    miniconda_lock="${miniconda_path}/.deployed"
+    test -f "$miniconda_lock" || (
+      # shellcheck disable=SC2154
+      miniconda_file_name="Miniconda3-${miniconda_version}-${ana_platform}.sh"
+
+      echo "::: Deploying ${miniconda_file_name}"
+
+      cd "$sources_dir"
+      $CURL "${CURL_OPTS[@]}" -# -L \
+        -O "${LSST_MINICONDA_BASE_URL}/${miniconda_file_name}"
+
+      rm -rf "$miniconda_path"
+      bash "$miniconda_file_name" -b -p "$miniconda_path"
+
+      touch "$miniconda_lock"
+      cd -
+  )
   # shellcheck disable=SC1090  
-  . "${CONDA_DIR}/../etc/profile.d/conda.sh"
+  . "${miniconda_path}/etc/profile.d/conda.sh"
+
+  fi
 }
 
 
@@ -131,13 +168,16 @@ parse_args() {
   local OPTIND
   local opt
 
-  while getopts "spnth" opt; do
+  while getopts "spnPth" opt; do
     case "$opt" in
     s)
       USE_ONLY_SRC=true
       ;;
     p)
       SETUP_ONLY=true
+      ;;
+    P)
+      USE_EXISTING_CONDA=true
       ;;
     n)
       NAMESPACE=true
@@ -169,13 +209,7 @@ create_load_script() {
   cmd_setup_conda="$(cat <<-EOF
 	export LSST_CONDA_ENV_NAME=${LSST_CONDA_ENV_NAME}
 	# shellcheck disable=SC1091
-	source "${CONDA_DIR}/../etc/profile.d/conda.sh"
-	if conda env list | grep "^eups "  > /dev/null; then
-	  conda activate eups
-	else
-	  echo "Environment EUPS base environment missing"
-	  return
-	fi
+	source "${miniconda_path}/etc/profile.d/conda.sh"
 	conda activate --stack "\$LSST_CONDA_ENV_NAME"
 	
 	EOF
@@ -218,6 +252,7 @@ define_platform() {
 
   case $(uname -s) in
     Linux*)
+      ana_platform='Linux-x86_64'
       pkg_postfix='linux-64'
       local release_file='/etc/redhat-release'
       if [[ ! -e $release_file ]]; then
@@ -249,6 +284,7 @@ define_platform() {
       ;;
     Darwin*)
       osfamily="osx"
+      ana_platform='MacOSX-x86_64'
       pkg_postfix='osx-64'
       target_cc=clang-1000.10.44.4
 
@@ -311,26 +347,22 @@ discover_url(){
 
 create_environment() {
 
-  local env_def_file="conda-${pkg_postfix}.lock"
-  local env_url="https://raw.githubusercontent.com/${ENV_REPO_ORG}/${ENV_REPO_NAME}/${ENV_REF}/etc/"
-  local env_file="${ENVS_FOLDER}/${ENV_REF}/${env_def_file}.yml"
-  echo " ... looking for ${env_def_file} in ${env_url}"
-  mkdir -p "${env_file%/*}"
-  # downloading environment definitino file
-  $CURL "${CURL_OPTS[@]}" -# -L "${env_url}/${env_def_file}" --output "${env_file}"  
   # creating environment
-  conda create --name "${LSST_CONDA_ENV_NAME}" --file "${env_file}"
-
-  # DISABLED: using stacked environment instead
-  ## setting up eups
-  # conda activate "${LSST_CONDA_ENV_NAME}"  
-  #conda info | grep "active environment"
-  ## checking if eups is included in the environment
-  #if ! which eups > /dev/null; then
-  #  conda install -y eups -c conda-forge
-  #fi
-  #
-  #conda deactivate
+  (
+    ARGS=()
+    ARGS+=('create')
+    ARGS+=('-y')
+    # disable the conda install progress bar when not attached to a tty. Eg.,
+    # when running under CI
+    if [[ ! -t 1 ]]; then
+      ARGS+=("--quiet")
+    fi
+    ARGS+=('--name' "$LSST_CONDA_ENV_NAME")
+    ARGS+=("-c conda-forge")
+    ARGS+=("rubin-env=${ENV_REF}")
+    echo "conda" "${ARGS[@]}"
+    conda "${ARGS[@]}"
+  )
 
   # creating new EUPS_PATH
   EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
@@ -339,11 +371,11 @@ create_environment() {
 
   # set EUPS_PKGROOT
   if [ "${NAMESPACE}" = true ]; then
-    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
-    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/src"
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/${EUPS_PRODUCT}/src"
   else
-    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
-    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/src"
   fi
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
   echo "$EUPS_SRC_PKGROOT"
@@ -355,7 +387,6 @@ create_environment() {
   echo "$EUPS_PKGROOT"
 
   create_load_script
-
 }
 
 fix_config_file() {
@@ -368,11 +399,11 @@ fix_config_file() {
 
   # set EUPS_PKG_ROOT
   if [ "${NAMESPACE}" = true ]; then
-    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
-    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/src"
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/${EUPS_PRODUCT}/src"
   else
-    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "${ENV_REF}")
-    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/stack/src"
+    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${osfamily}/${osplatform}" "${ENV_REF}")
+    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/src"
   fi
   echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
   echo "$EUPS_SRC_PKGROOT"
@@ -396,9 +427,9 @@ fix_config_file() {
 
 set_environment() {
   if [ "${NAMESPACE}" = true ]; then
-    LIST_BASE_URL="${EUPS_REPO_URL}/stack/${EUPS_PRODUCT}/src/tags"
+    LIST_BASE_URL="${EUPS_REPO_URL}/${EUPS_PRODUCT}/src/tags"
   else
-    LIST_BASE_URL="${EUPS_REPO_URL}/stack/src/tags"
+    LIST_BASE_URL="${EUPS_REPO_URL}/src/tags"
   fi
   LIST_URL="${LIST_BASE_URL}"/"${EUPS_TAG}".list
   # check if it is not an https link
@@ -418,12 +449,7 @@ set_environment() {
     fail "Eups tag ${EUPS_TAG} for product ${EUPS_PRODUCT} not related to any environment."
   fi
 
-  RAW_ENV_REPO=$(echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }')
-  ENV_REPO_URL=$(echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $1 }')
-  ENV_REF=$(echo "${RAW_ENV_REPO}" | awk -F '@' '{ print $2 }')
-  ENV_REPO_NAME=$(echo "${ENV_REPO_URL}" | awk -F '/' '{ print $5 }' | awk -F '.' '{ print $1 }')
-  ENV_REPO_ORG=$(echo "${ENV_REPO_URL}" | awk -F '/' '{ print $4 }')
-  # echo "Retriving conda environment information forom respository ${ENV_REPO_URL}, SHA-1 ${ENV_REF}."
+  ENV_REF=$(echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }')
 
   export LSST_CONDA_ENV_NAME="${CONDA_ENV_BASE_NAME}-${ENV_REF}"
 
@@ -468,17 +494,15 @@ main() {
   echo "LSST_HOME set to ${LSST_HOME}"
   mkdir -p "${LSST_HOME}"
 
+  define_platform
+
   # It assumes a valid conda is already installed
   # we can add a check and if not present install a miniconda
   # howeverm if this tool is distributed as conda package this is not needed
   check_conda
 
-  #echo "Preparing ..."
-  define_platform
-  #echo $EUPS_BIN_PKGROOT
-
-  #discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "46b24e8"
-  #local EBP=$(discover_url "${EUPS_REPO_URL}/stack/${osfamily}/${osplatform}" "46b24e8")
+  #discover_url "${EUPS_REPO_URL}/${osfamily}/${osplatform}" "46b24e8"
+  #local EBP=$(discover_url "${EUPS_REPO_URL}/${osfamily}/${osplatform}" "46b24e8")
   #echo "BinPath: ${EBP}"
 
   echo "Setting environment ..."
