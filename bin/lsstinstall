@@ -17,13 +17,6 @@
 #    - execute:
 #        eups distrib install -t <EUPS_TAG> <EUPS_PRODUCT>
 #
-#    To consider as prereq:
-#    - conda (anaconda or miniconda)
-#    - git
-#
-#    An additional script should be added in order to be able to switch between environments
-#    - this is similar (but not the same) as envconfig
-#
 #############################################################################################
 
 
@@ -42,6 +35,9 @@ CONDA_ENV_BASE_NAME=lsst-scipipe
 SETUP_ONLY=false
 NAMESPACE=false
 USE_EXISTING_CONDA=false
+USE_PINNED_ENV=false
+CLEAN_ENV=false
+CLEAN_STACK=false
 
 
 #
@@ -79,23 +75,29 @@ usage() {
 
   # note that heredocs are prefixed with tab chars
   fail "$(cat <<-EOF
-		Usage: $0 [-h] [-s] [-p] i[-n] [-P] -t eups_tag eups_product
+		Usage: $0 [-h] [-s] [-p] [-n] [-P] [-E] [-k] [-K] -t eups_tag eups_product
 
 		-t          Install eups_tag of eups_product after ensuring that the proper conda environment is available. 
 		            In case it is not, it will be deployed and activated before execute the eups distrib install..
 
-		-s          Optional. Only use EUPS source "eupspkg" packages.
+		-s          Only use EUPS source "eupspkg" packages.
 		            Do not use together with -p option.
 
-		-p          Optional. Prepare Only. Check if the environment for a specific build is available.
+		-p          Prepare Only. Check if the environment for a specific build is available.
 		            In case it is not, it will be deployed and the activation script generated.
 		            No eups distrib install will be executed.
 		            Config file (to source) is regenerate.
 		            Do not use together with -s option
 
-		-n          Optional. Search for eups_products organized in namespaces in remote EUPS_PKGROOT.
+		-n          Search for eups_products organized in namespaces in remote EUPS_PKGROOT.
 
-		-P          Optional. Use a preinstalled conda. Fails if no valid conda is found.
+		-P          Use a preinstalled conda. Fails if no valid conda is found.
+
+		-E          Use the pinned environment if available.
+
+		-k          Recreate conda environment.
+
+		-K          Clean stack folder.
 
 		-h          Show this message
 		
@@ -106,7 +108,7 @@ usage() {
 
 
 check_conda() {
-  if [ "${USE_EXISTING_CONDA}" = true ]; then
+  if [ "$USE_EXISTING_CONDA" = true ]; then
     CONDA_PATH=$(which conda)
     if [ "${CONDA_PATH}" =="" ]; then
       fail "No conda found executable found in the system. Please avoid using option -P"
@@ -168,7 +170,7 @@ parse_args() {
   local OPTIND
   local opt
 
-  while getopts "spnPth" opt; do
+  while getopts "spnPEkKth" opt; do
     case "$opt" in
     s)
       USE_ONLY_SRC=true
@@ -179,8 +181,17 @@ parse_args() {
     P)
       USE_EXISTING_CONDA=true
       ;;
+    E)
+      USE_PINNED_ENV=true
+      ;;
     n)
       NAMESPACE=true
+      ;;
+    k)
+      CLEAN_ENV=true
+      ;;
+    K)
+      CLEAN_STACK=true
       ;;
     t)
       # if -s option is giving, an extra shift is required
@@ -210,7 +221,7 @@ create_load_script() {
 	export LSST_CONDA_ENV_NAME=${LSST_CONDA_ENV_NAME}
 	# shellcheck disable=SC1091
 	source "${miniconda_path}/etc/profile.d/conda.sh"
-	conda activate --stack "\$LSST_CONDA_ENV_NAME"
+	conda activate "\$LSST_CONDA_ENV_NAME"
 	
 	EOF
   )"
@@ -229,7 +240,6 @@ create_load_script() {
 		EUPS_SRC_PKGROOT="${EUPS_SRC_PKGROOT}"
 
 		# Bootstrap EUPS
-		# EUPS_DIR is defined in the conda environment itself
 		source "\${EUPS_DIR}/bin/setups.sh"
 		export -f setup
 		export -f unsetup
@@ -346,29 +356,39 @@ discover_url(){
 
 
 create_environment() {
-
   # creating environment
-  (
-    ARGS=()
-    ARGS+=('create')
-    ARGS+=('-y')
-    # disable the conda install progress bar when not attached to a tty. Eg.,
-    # when running under CI
-    if [[ ! -t 1 ]]; then
-      ARGS+=("--quiet")
+  ARGS=()
+  ARGS+=('create')
+  ARGS+=('-y')
+  # disable the conda install progress bar when not attached to a tty. Eg.,
+  # when running under CI
+  if [[ ! -t 1 ]]; then
+    ARGS+=("--quiet")
+  fi
+  ARGS+=('--name' "$LSST_CONDA_ENV_NAME")
+  ARGS+=("-c conda-forge")
+  if [ "$USE_PINNED_ENV" = true ]; then
+    if [ "$PINNED_ENV_LINK" == "" ];then
+      fail "No pinned environemnt available for $EUPS_TAG (platform $pkg_postfix). Avoid using -E option."
     fi
-    ARGS+=('--name' "$LSST_CONDA_ENV_NAME")
-    ARGS+=("-c conda-forge")
+    local lock_file="${LSST_HOME}/envs/${EUPS_TAG}.env"
+    $CURL "${CURL_OPTS[@]}" -# -L "${PINNED_ENV_LINK}"  --output "${lock_file}"
+    ARGS+=("--file" "$lock_file")
+    EUPS_PATH="${LSST_HOME}/stacks/${EUPS_TAG}"
+  else
     ARGS+=("rubin-env=${ENV_REF}")
-    echo "conda" "${ARGS[@]}"
-    conda "${ARGS[@]}"
-  )
-
-  # creating new EUPS_PATH
-  EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
+    # creating new EUPS_PATH
+    EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
+  fi
+  echo "conda" "${ARGS[@]}"
+  conda "${ARGS[@]}"
   mkdir -p "${EUPS_PATH}"/{site,ups_db}
+  create_load_script
+}
 
 
+define_pkgroots() {
+  conda activate "${LSST_CONDA_ENV_NAME}"
   # set EUPS_PKGROOT
   if [ "${NAMESPACE}" = true ]; then
     EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
@@ -381,38 +401,53 @@ create_environment() {
   echo "$EUPS_SRC_PKGROOT"
   if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
     EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+    PINNED_ENV_LINK="${EUPS_BIN_PKGROOT}/env/${EUPS_TAG}.env"
   else
+    # this is the case when the binary packages for the platform are not available
     EUPS_PKGROOT="${EUPS_SRC_PKGROOT}"
+    local tmp_pinned="${EUPS_SRC_PKGROOT}/env/${EUPS_TAG}.env"
+    local raw_platform=$("${CURL}" -s "${tmp_pinned}" | grep "^# platform:")
+    local pinned_platform=$(echo $raw_platform| awk '{ print $2}')
+    if [ "$pkg_postfix" == "pinned_platform" ]; then
+      PINNED_ENV_LINK="${EUPS_SRC_PKGROOT}/env/${EUPS_TAG}.env"
+    else
+      PINNED_ENV_LINK=""
+    fi
   fi
+  conda deactivate
   echo "$EUPS_PKGROOT"
-
-  create_load_script
+  echo "Pinned Environment at: ${PINNED_ENV_LINK}"
 }
+
 
 fix_config_file() {
   # the environment exists but not the config file to activate it
-  # this functino is to recreate the config file
+  # this function is to recreate the config file
 
   # creating new EUPS_PATH
-  EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
+  if [ "$USE_PINNED_ENV" = true ]; then
+    EUPS_PATH="${LSST_HOME}/stacks/${EUPS_TAG}"
+  else
+    EUPS_PATH="${LSST_HOME}/stacks/${ENV_REF}"
+  fi
   mkdir -p "${EUPS_PATH}"/{site,ups_db}
 
   # set EUPS_PKG_ROOT
-  if [ "${NAMESPACE}" = true ]; then
-    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
-    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/${EUPS_PRODUCT}/src"
-  else
-    EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${osfamily}/${osplatform}" "${ENV_REF}")
-    EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/src"
-  fi
-  echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
-  echo "$EUPS_SRC_PKGROOT"
-  if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
-    EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
-  else
-    EUPS_PKGROOT="${EUPS_SRC_PKGROOT}"
-  fi
-  echo "$EUPS_PKGROOT"
+  #if [ "${NAMESPACE}" = true ]; then
+  #  EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${EUPS_PRODUCT}/${osfamily}/${osplatform}" "${ENV_REF}")
+  #  EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/${EUPS_PRODUCT}/src"
+  #else
+  #  EUPS_BIN_PKGROOT=$(discover_url "${EUPS_REPO_URL}/${osfamily}/${osplatform}" "${ENV_REF}")
+  #  EUPS_SRC_PKGROOT="${EUPS_REPO_URL}/src"
+  #fi
+  #echo "Found EUPS binary path:   $EUPS_BIN_PKGROOT"
+  #echo "$EUPS_SRC_PKGROOT"
+  #if [[ "${EUPS_BIN_PKGROOT}" != "" ]]; then
+  #  EUPS_PKGROOT="${EUPS_BIN_PKGROOT}|${EUPS_SRC_PKGROOT}"
+  #else
+  #  EUPS_PKGROOT="${EUPS_SRC_PKGROOT}"
+  #fi
+  #echo "$EUPS_PKGROOT"
 
   config_folder="${ENVS_FOLDER}/${ENV_REF}"
   echo "$config_folder"
@@ -422,10 +457,10 @@ fix_config_file() {
   fi
 
   create_load_script
-
 }
 
-set_environment() {
+
+get_environment_id() {
   if [ "${NAMESPACE}" = true ]; then
     LIST_BASE_URL="${EUPS_REPO_URL}/${EUPS_PRODUCT}/src/tags"
   else
@@ -438,7 +473,7 @@ set_environment() {
     if [[ "${LIST_URL:0:1}" == "/" ]]; then
       LIST_URL="file://${LIST_URL}"
     else
-      fail "Error defining EUPS_PKGROOT: provided wrong input in EUPS_REPO_URL:\\n -> ${EUPS_REPO_URL}"
+      fail "Error in the definition of the EUPS package repository (EUPS_REPO_URL):\\n -> ${EUPS_REPO_URL}"
     fi
   fi
   # shellcheck disable=SC2028
@@ -448,25 +483,79 @@ set_environment() {
   if [ -z "${RAW_ENV_INFO}" ]; then
     fail "Eups tag ${EUPS_TAG} for product ${EUPS_PRODUCT} not related to any environment."
   fi
-
   ENV_REF=$(echo "${RAW_ENV_INFO}" | awk -F '=' '{ print $2 }')
+}
+
+
+set_environment() {
+  #
+  # get environment information
+  get_environment_id
 
   export LSST_CONDA_ENV_NAME="${CONDA_ENV_BASE_NAME}-${ENV_REF}"
 
   # defining the filename to source for environment configuration
   config_file="${ENVS_FOLDER}/${ENV_REF}/loadLSST_${ENV_REF}_env.sh"
-
   # check if the environment exist
   ENV_CHECK=$(conda env list | grep "^${LSST_CONDA_ENV_NAME}")
-  if [ -z "${ENV_CHECK}" ]; then
+  if [[ -z "${ENV_CHECK}" || "$CLEAN_ENV" = true ]]; then
     echo " ... creating new environemnt ${LSST_CONDA_ENV_NAME} ..."
     create_environment "${LSST_CONDA_ENV_NAME}"
+  else
+    echo ">>> Environment $LSST_CONDA_ENV_NAME already available"
+    export EUPS_PATH="${LSST_HOME}/stack/${ENV_REF}"
+  fi
+
+  #
+  # define PKGROOTs and PINNED_ENV_LINK
+  define_pkgroots
+
+  if [ "$PINNED_ENV_LINK" != "" ]; then
+    if [ "$USE_PINNED_ENV" = true ]; then
+      export LSST_CONDA_ENV_NAME="${CONDA_ENV_BASE_NAME}-${EUPS_TAG}"
+      echo "... check pinned environment $LSST_CONDA_ENV_NAME"
+      # RE-defining the filename to source for environment configuration
+      config_file="${ENVS_FOLDER}/${ENV_REF}/loadLSST_${EUPS_TAG}_env.sh"
+      ENV_CHECK=$(conda env list | grep "^${LSST_CONDA_ENV_NAME}")
+      if [[ -z "${ENV_CHECK}" || $CLEAN_ENV = true ]]; then
+        echo " ... creating new environemnt ${LSST_CONDA_ENV_NAME} ..."
+        create_environment "${LSST_CONDA_ENV_NAME}"
+      else
+        echo ">>> Environment $LSST_CONDA_ENV_NAME already available"
+        export EUPS_PATH="${LSST_HOME}/stack/${EUPS_TAG}"
+      fi
+    else
+      # check differences with pinned environment
+      local local_pins="$(mktemp)"
+      local build_pins="$(mktemp)"
+      conda activate "$LSST_CONDA_ENV_NAME"
+      conda list --explicit > "$local_pins"
+      conda deactivate
+      $CURL "${CURL_OPTS[@]}" -# -L "${PINNED_ENV_LINK}"  --output "${build_pins}"
+      if (diff -B <(sort "${local_pins}") <(sort "${build_pins}") ); then
+        echo "... Local activated environment consistent with original build environemnt."
+        echo
+      else
+        echo "^^^ Please note the difference between the currently activate environment"
+        echo "...  and the environment used originally for the build of ${EUPS_TAG}."
+        echo "...  You can use option -E to build with it."
+        echo
+      fi
+      rm "$local_pins" "$build_pins"
+    fi
+  fi
+
+  if [ "$CLEAN_STACK" = true ]; then
+    echo "... Resetting EUPS_PATH: $EUPS_PATH"
+    rm -rf "$EUPS_PATH"
+    mkdir -p "${EUPS_PATH}"/{site,ups_db}
+    ls -lrt "${EUPS_PATH}"/ups_db
   fi
 
   # check if config file exists
   # config file regenerated when setup-only is given
-  if [ ! -f "${config_file}" ] || [ "$SETUP_ONLY" == "true" ] ; then
-    echo " ... config file missing, recreating environemnt ${LSST_CONDA_ENV_NAME} ..."
+  if [ ! -f "${config_file}" ]; then
+    echo " ... config file missing, recreating it for environemnt ${LSST_CONDA_ENV_NAME} ..."
     fix_config_file "${LSST_CONDA_ENV_NAME}"
   fi
   # source config file to enable environment
@@ -508,6 +597,7 @@ main() {
   echo "Setting environment ..."
   set_environment
   echo
+
   #echo "  EUPS Product: ${EUPS_PRODUCT}"
   #echo "  EUPS Tag:     ${EUPS_TAG}"
   if [ "$SETUP_ONLY" == "false" ]; then
