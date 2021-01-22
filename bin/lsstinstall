@@ -37,7 +37,6 @@ NAMESPACE=false
 USE_EXISTING_CONDA=false
 USE_PINNED_ENV=false
 CLEAN_ENV=false
-CLEAN_STACK=false
 
 
 #
@@ -75,7 +74,7 @@ usage() {
 
   # note that heredocs are prefixed with tab chars
   fail "$(cat <<-EOF
-		Usage: $0 [-h] [-s] [-p] [-n] [-P] [-E] [-k] [-K] -t eups_tag eups_product
+		Usage: $0 [-h] [-s] [-p] [-n] [-P] [-E] [-k] -t eups_tag eups_product
 
 		-t          Install eups_tag of eups_product after ensuring that the proper conda environment is available. 
 		            In case it is not, it will be deployed and activated before execute the eups distrib install..
@@ -96,8 +95,6 @@ usage() {
 		-E          Use the pinned environment if available.
 
 		-k          Recreate conda environment.
-
-		-K          Clean stack folder.
 
 		-h          Show this message
 		
@@ -170,7 +167,7 @@ parse_args() {
   local OPTIND
   local opt
 
-  while getopts "spnPEkKth" opt; do
+  while getopts "spnPEkth" opt; do
     case "$opt" in
     s)
       USE_ONLY_SRC=true
@@ -189,9 +186,6 @@ parse_args() {
       ;;
     k)
       CLEAN_ENV=true
-      ;;
-    K)
-      CLEAN_STACK=true
       ;;
     t)
       # if -s option is giving, an extra shift is required
@@ -543,13 +537,6 @@ set_environment() {
       fi
       rm "$local_pins" "$build_pins"
     fi
-  fi
-
-  if [ "$CLEAN_STACK" = true ]; then
-    echo "... Resetting EUPS_PATH: $EUPS_PATH"
-    rm -rf "$EUPS_PATH"
-    mkdir -p "${EUPS_PATH}"/{site,ups_db}
-    ls -lrt "${EUPS_PATH}"/ups_db
   fi
 
   # check if config file exists
