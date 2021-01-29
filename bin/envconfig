@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# maybe this should be called lsstconfig (?)
+
+
+usage() {
+  if [[ ! -z "$1" ]]; then
+     >&2 echo -e "$0: $1"
+  fi
+
+  # note that heredocs are prefixed with tab chars
+  (cat <<-EOF
+
+		Usage: $0  [-r] [-h]
+	
+	        Propose a list of environment configured from previous lsstinstall runs
+                to choose interactivelly (Default, with no input options).
+
+		Specific options:
+	-r REF      activate the environment corresponding to REF
+	-h          show this message
+
+		EOF
+  )
+
+}
+
+parse_args() {
+  local OPTIND
+  local opt
+
+  while getopts "rih" opt; do
+    case "$opt" in
+    r)
+      shift;
+      ENVREF=$1
+      ;;
+    h)
+      usage; return 1
+      ;;
+    *)
+      usage "Unknown option: ${opt}"; return 1
+      ;;
+    esac
+  done
+  shift $((OPTIND-1))
+}
+
+##############
+
+# defining the workspace, where lsstinstall will work
+LSST_HOME="${LSST_HOME:-$HOME/lsst_wrk}"
+ENVS_FOLDER="${LSST_HOME}/envs"
+ENVREF=""
+
+parse_args "$@" || return
+
+
+if [[ $ENVREF != "" ]]; then
+    # shellcheck disable=SC1090
+    source "$ENVS_FOLDER/${ENVREF}/loadLSST_${ENVREF}_env.sh"
+
+else
+  raw_envs=()
+  # get the list of available environments
+  while IFS=$'\n' read -r line 
+  do
+    if [[ "$line" != '' ]] ; then
+      raw_envs+=("$line")
+    fi
+  done < <(ls "$ENVS_FOLDER")
+  envs=()
+  l=0
+  for i in "${raw_envs[@]}"; do
+    ((l++))
+    envs[l]=$(echo "${i}" | cut -f 1 -d ' ')
+    echo "${l} - ${envs[${l}]}"
+  done
+  echo "0 - EXIT (return)"
+  read -r -p "Choose environment [0 to ${l}]: " eid
+  if  [[ "${eid}" -eq 0 ]] ; then
+    return
+  fi
+  if [[ -z "${envs[${eid}]}" ]] ; then
+    echo "User input error: ${eid} not in range."
+    return
+  else
+    # shellcheck disable=SC1090
+    source "$ENVS_FOLDER/${envs[${eid}]}/loadLSST_${envs[${eid}]}_env.sh"
+  fi
+
+fi

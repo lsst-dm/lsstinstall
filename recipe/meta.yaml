@@ -1,0 +1,28 @@
+{% set version =  [GIT_DESCRIBE_TAG, GIT_DESCRIBE_NUMBER, GIT_DESCRIBE_HASH]|join('_') %}
+
+package:
+  name: lsstinstall
+  version: {{ version }}
+
+source:
+  git_url: ../
+
+build:
+  noarch: generic
+  number: 1
+
+requirements:
+  build:
+    - python
+
+  host:
+    - python
+
+  run:
+    - python
+
+about:
+  home: https://github.com/lsst-dm/lsstinstall
+  license: GPL-2.0-or-later
+  license_family: GPL
+  summary: 'An LSST installer for eups distributions'
